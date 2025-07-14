@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Region Concrete Batch Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/1.4.0/chartjs-plugin-annotation.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; height: 300px; width: 100%; transition: height 0.3s ease-in-out; }
+        .dashboard-mode .chart-container { height: 450px; }
+        .filter-list::-webkit-scrollbar { width: 8px; }
+        .filter-list::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        .filter-list::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        .filter-list::-webkit-scrollbar-thumb:hover { background: #555; }
+        .loader-text { font-size: 0.875rem; color: #4a5568; margin-top: 0.5rem; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 lg:p-6">
+
+    <!-- Main Container -->
+    <div class="max-w-screen-2xl mx-auto">
+        <header class="mb-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-800">Multi-Region Concrete Batch Analyzer</h1>
+                <p class="text-gray-600 mt-1">Upload Excel files to analyze batch performance across regions.</p>
+            </div>
+            <div class="flex items-center space-x-2">
+                 <button id="share-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-blue-600 transition hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                    </svg>
+                </button>
+                <button id="toggle-dashboard-btn" class="bg-white p-2 rounded-lg shadow-md hover:bg-gray-200 transition hidden">
+                    <svg id="icon-expand" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                    </svg>
+                    <svg id="icon-compress" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <div id="main-grid" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Controls Column -->
+            <aside id="controls-aside" class="lg:col-span-3 bg-white p-4 rounded-xl shadow-md self-start">
+                <!-- File Dropzone -->
+                <div id="dropzone" class="p-6 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors border-gray-300 hover:border-blue-400">
+                    <input type="file" id="file-input" multiple accept=".xlsx" class="hidden">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    <p class="mt-2 text-sm text-gray-600">Drag & drop or click to upload</p>
+                    <p class="text-xs text-gray-500">.XLSX files only</p>
+                </div>
+                <div id="loader" class="mt-4 text-center text-blue-600 hidden">
+                    <p>Processing files...</p>
+                    <p id="loader-status" class="loader-text"></p>
+                </div>
+                <div id="error-message" class="mt-4 text-center text-red-600 bg-red-100 p-2 rounded hidden"></div>
+
+                <!-- Control Buttons -->
+                <div class="mt-4 border-t pt-4 space-y-3">
+                    <button id="clear-data-btn" class="w-full bg-red-500 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-red-600 transition flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        Clear All Data
+                    </button>
+                    <label class="flex items-center justify-between">
+                        <span class="font-semibold">Debug Mode</span>
+                        <div class="relative">
+                            <input type="checkbox" id="debug-mode" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Filters -->
+                <div id="filters-container" class="space-y-4"></div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main id="main-content" class="lg:col-span-9">
+                <div id="placeholder" class="flex items-center justify-center h-full bg-white rounded-xl shadow-md p-8 text-center">
+                    <div>
+                        <h2 class="text-xl font-medium text-gray-700">Awaiting Data</h2>
+                        <p class="text-gray-500 mt-2">Please upload your Excel files or load a shared dashboard.</p>
+                    </div>
+                </div>
+                <div id="dashboard" class="space-y-6 hidden">
+                    <!-- Summary Cards -->
+                    <section>
+                        <h2 class="text-2xl font-bold mb-4">Performance Summary</h2>
+                        <div id="summary-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                    </section>
+                    <!-- Charts -->
+                    <section class="bg-white p-4 rounded-xl shadow-md">
+                        <h2 id="weekly-trend-title" class="text-2xl font-bold mb-4">Weekly Error Trend by Material (Avg %)</h2>
+                        <div class="chart-container"><canvas id="weekly-trend-chart"></canvas></div>
+                    </section>
+                    <section class="bg-white p-4 rounded-xl shadow-md">
+                        <h2 class="text-2xl font-bold mb-4">Material Performance Distribution</h2>
+                        <div class="chart-container"><canvas id="region-comparison-chart"></canvas></div>
+                    </section>
+                    <!-- Performance Table -->
+                    <section class="bg-white p-4 rounded-xl shadow-md">
+                        <h2 class="text-2xl font-bold mb-4">Material Performance Details</h2>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead id="performance-table-head" class="bg-gray-50"></thead>
+                                <tbody id="performance-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal Base -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-60 z-40 hidden"></div>
+    <div id="share-modal" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl z-50 p-6 w-full max-w-lg hidden">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Share Dashboard</h2>
+        <p class="text-gray-600 mb-4">Copy the link below to share a snapshot of your current dashboard, including all data and filters.</p>
+        <div class="flex items-center space-x-2">
+            <input id="share-link-input" type="text" readonly class="w-full p-2 border border-gray-300 rounded-md bg-gray-100">
+            <button id="copy-link-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Copy</button>
+        </div>
+        <button id="share-modal-close-btn" class="absolute top-4 right-4 text-gray-500 hover:text-red-600">&times;</button>
+    </div>
+    <div id="modal-container" class="fixed inset-0 z-50 p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col mx-auto my-auto">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 id="modal-title" class="text-2xl font-bold text-gray-800"></h2>
+                <button id="modal-close-btn" class="text-gray-500 hover:text-red-600 transition-colors">&times;</button>
+            </div>
+            <div class="overflow-y-auto flex-grow p-4">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Material</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target (LB)</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actual (LB)</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- STATE MANAGEMENT ---
+        let allTickets = [];
+        let allMaterials = new Set();
+        let allRegions = new Set();
+        let allPlants = new Set();
+        let allMonths = new Set();
+        let selectedMaterials = [];
+        let selectedRegions = [];
+        let selectedPlants = [];
+        let selectedMonth = '';
+        let groupColors = {};
+        let chartInstances = {};
+        let isDashboardView = false;
+        let db, storage;
+
+        // --- DOM ELEMENTS ---
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const loader = document.getElementById('loader');
+        const loaderStatus = document.getElementById('loader-status');
+        const errorMessage = document.getElementById('error-message');
+        const filtersContainer = document.getElementById('filters-container');
+        const mainGrid = document.getElementById('main-grid');
+        const controlsAside = document.getElementById('controls-aside');
+        const mainContent = document.getElementById('main-content');
+        const placeholder = document.getElementById('placeholder');
+        const dashboard = document.getElementById('dashboard');
+        const summaryCards = document.getElementById('summary-cards');
+        const weeklyTrendTitle = document.getElementById('weekly-trend-title');
+        const performanceTableHead = document.getElementById('performance-table-head');
+        const performanceTableBody = document.getElementById('performance-table-body');
+        const modalContainer = document.getElementById('modal-container');
+        const modalTitle = document.getElementById('modal-title');
+        const modalTableBody = document.getElementById('modal-table-body');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const shareModal = document.getElementById('share-modal');
+        const shareModalCloseBtn = document.getElementById('share-modal-close-btn');
+        const shareLinkInput = document.getElementById('share-link-input');
+        const copyLinkBtn = document.getElementById('copy-link-btn');
+        const modalBackdrop = document.getElementById('modal-backdrop');
+        const toggleDashboardBtn = document.getElementById('toggle-dashboard-btn');
+        const iconExpand = document.getElementById('icon-expand');
+        const iconCompress = document.getElementById('icon-compress');
+        const shareBtn = document.getElementById('share-btn');
+
+        // --- HELPER FUNCTIONS ---
+        const normalizeMaterialName = (name) => {
+            if (typeof name !== 'string') return '';
+            const normalized = name.trim().toUpperCase();
+            const replacements = { 'PORTLAND CEMENT': 'CEMENT', '30S CONCRETE STO': 'CSAND', 'CONC SAND': 'CSAND' };
+            return replacements[normalized] || normalized;
+        };
+        const STANDARD_EXCLUSIONS = new Set(['WATER', 'AEA', 'MRWR', 'H.S.1 HOUR', 'RETARDER', 'AIR', 'WTR', 'HOT WATER', 'CHILL WATER', 'ADM', 'MICAFIBERS', 'ACCELGUARD']);
+        const RK_HALL_MATERIALS = new Set(['CSAND', 'CEMENT', 'RIVER ROCK', '#57 CR', 'TY F FLY ASH', '30S CONCRETE STO', 'PG', 'CONC SAND', 'PORTLAND CEMENT'].map(normalizeMaterialName));
+        const getWeekStartDate = (date) => {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(d.setDate(diff)).toISOString().split('T')[0];
+        };
+        const getMonthYear = (date) => {
+            const d = new Date(date);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        };
+        const generateColor = (index) => {
+            const hue = (index * 137.508) % 360;
+            return `hsl(${hue}, 70%, 50%)`;
+        };
+        
+        const categorizeError = (error) => {
+            if (error <= 0 && error >= -1) return 'Optimal';
+            if (error < -2) return 'Risk';
+            if (error > 1) return 'Waste';
+            return 'In Tolerance';
+        };
+        
+        const getOverallTicketCategory = (batches) => {
+            const categories = batches.map(b => categorizeError(b.errorPercent));
+            if (categories.includes('Waste')) return 'Waste';
+            if (categories.includes('Risk')) return 'Risk';
+            if (categories.includes('In Tolerance')) return 'In Tolerance';
+            return 'Optimal';
+        };
+
+        const logDebug = (...args) => {
+            if (document.getElementById('debug-mode').checked) console.log(...args);
+        };
+        const showError = (msg) => {
+            errorMessage.textContent = msg;
+            errorMessage.classList.remove('hidden');
+        };
+        const hideError = () => {
+            errorMessage.classList.add('hidden');
+        };
+        const setLoaderStatus = (msg) => {
+            loaderStatus.textContent = msg;
+        };
+
+        // --- DATA PROCESSING ---
+        const processFiles = async (files) => {
+            loader.classList.remove('hidden');
+            hideError();
+
+            let rawBatches = [];
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                setLoaderStatus(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
+                try {
+                    let regionName;
+                    const fileNameUpper = file.name.toUpperCase();
+
+                    if (fileNameUpper.startsWith('JUNE 2025.XLSX')) {
+                        regionName = 'ALLIED';
+                    } else {
+                        const regionNameMatch = file.name.match(/^(.*?)\s*(?:REGION|PLANT|JAN|FEB|MARCH|APRIL|MAY|JUNE|JULY|AUG|SEPT|OCT|NOV|DEC)/i);
+                        regionName = regionNameMatch ? regionNameMatch[1].trim().toUpperCase() : file.name.split('.')[0].toUpperCase();
+                        if (regionName === '') regionName = file.name.split('.')[0].toUpperCase();
+                    }
+                    
+                    logDebug(`[${regionName}] Processing file:`, file.name);
+
+                    const data = await file.arrayBuffer();
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    const requiredSheets = ['Batch weights', 'Tickets', 'Products'];
+                    for (const sheet of requiredSheets) {
+                        if (!workbook.SheetNames.includes(sheet)) {
+                            throw new Error(`Missing required sheet: '${sheet}'.`);
+                        }
+                    }
+
+                    const batchWeightsSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Batch weights']);
+                    const ticketsSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Tickets']);
+                    const productsSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Products']);
+
+                    const ticketCydMap = new Map();
+                    productsSheet.forEach(p => {
+                        if (p['UOM'] === 'CY') {
+                            ticketCydMap.set(p['Ticket number'], parseFloat(p['Quantity']) || 0);
+                        }
+                    });
+                    
+                    const ticketInfoMap = new Map();
+                    ticketsSheet.forEach(t => {
+                        const plantName = t['Plant'] || t['Plant Name'] || t['Plant name'] || 'Unknown Plant';
+                        const orderQty = ticketCydMap.get(t['Ticket number']) || 0;
+                        ticketInfoMap.set(t['Ticket number'], {
+                            date: t['Ticketed'],
+                            plant: plantName,
+                            orderQty: orderQty
+                        });
+                    });
+
+                    const processedBatches = batchWeightsSheet
+                        .map(row => ({ ...row, normalizedMaterial: normalizeMaterialName(row['Material name']) }))
+                        .filter(row => {
+                            const isRKHall = regionName === 'RK HALL';
+                            const uomCheck = row.UOM === 'LB';
+                            const materialCheck = isRKHall ? RK_HALL_MATERIALS.has(row.normalizedMaterial) : !STANDARD_EXCLUSIONS.has(row.normalizedMaterial);
+                            return uomCheck && materialCheck;
+                        })
+                        .map(row => {
+                            const ticketInfo = ticketInfoMap.get(row['Ticket number']);
+                            const ticketDateStr = ticketInfo ? ticketInfo.date : null;
+                            const plantName = ticketInfo ? ticketInfo.plant : 'Unknown Plant';
+                            const orderQty = ticketInfo ? ticketInfo.orderQty : 0;
+
+                            const ticketDate = typeof ticketDateStr === 'number' ? new Date(Date.UTC(0, 0, ticketDateStr - 1)) : new Date(ticketDateStr);
+                            const target = parseFloat(row.Target) || 0;
+                            const actual = parseFloat(row.Actual) || 0;
+                            const errorPercent = target !== 0 ? ((actual - target) / target) * 100 : 0;
+                            return { ...row, ticketDate, target, actual, errorPercent, region: regionName, plant: plantName, monthYear: getMonthYear(ticketDate), orderQty };
+                        })
+                        .filter(row => row.ticketDate && !isNaN(row.ticketDate.getTime()))
+                        .filter(row => Math.abs(row.errorPercent) <= 5);
+                    
+                    rawBatches.push(...processedBatches);
+                } catch (err) {
+                    console.error('Error processing file:', file.name, err);
+                    showError(`Error in ${file.name}: ${err.message}`);
+                }
+            }
+            
+            const groupedByTicket = _.groupBy(rawBatches, 'Ticket number');
+            allTickets = Object.values(groupedByTicket).map(batches => {
+                const firstBatch = batches[0];
+                return {
+                    ticketNumber: firstBatch['Ticket number'],
+                    ticketDate: firstBatch.ticketDate,
+                    region: firstBatch.region,
+                    plant: firstBatch.plant,
+                    monthYear: firstBatch.monthYear,
+                    orderQty: firstBatch.orderQty,
+                    batches: batches,
+                    overallCategory: getOverallTicketCategory(batches)
+                };
+            });
+            
+            updateMasterLists();
+            updateUI();
+            loader.classList.add('hidden');
+            setLoaderStatus('');
+        };
+        
+        const updateMasterLists = () => {
+            allMaterials.clear();
+            allRegions.clear();
+            allPlants.clear();
+            allMonths.clear();
+            allTickets.forEach(t => {
+                t.batches.forEach(b => allMaterials.add(b.normalizedMaterial));
+                allRegions.add(t.region);
+                allPlants.add(t.plant);
+                allMonths.add(t.monthYear);
+            });
+
+            const allGroups = new Set([...allRegions, ...allPlants]);
+            allGroups.forEach((group) => {
+                if (!groupColors[group]) {
+                    groupColors[group] = generateColor(Object.keys(groupColors).length);
+                }
+            });
+
+            selectedMaterials = Array.from(allMaterials);
+            selectedRegions = Array.from(allRegions);
+            selectedPlants = Array.from(allPlants);
+            if (!selectedMonth || !allMonths.has(selectedMonth)) {
+                selectedMonth = Array.from(allMonths).sort().pop() || '';
+            }
+        };
+
+        // --- UI RENDERING ---
+        const updateUI = () => {
+            if (allTickets.length === 0) {
+                placeholder.classList.remove('hidden');
+                dashboard.classList.add('hidden');
+                toggleDashboardBtn.classList.add('hidden');
+                shareBtn.classList.add('hidden');
+                filtersContainer.innerHTML = '';
+                filtersContainer.classList.add('hidden');
+                return;
+            }
+
+            placeholder.classList.add('hidden');
+            dashboard.classList.remove('hidden');
+            toggleDashboardBtn.classList.remove('hidden');
+            shareBtn.classList.remove('hidden');
+            filtersContainer.classList.remove('hidden');
+            
+            renderFilters();
+            renderDashboard();
+        };
+        
+        const createFilterSection = (title, items, selectedItems, type) => {
+            const sortedItems = Array.from(items).sort();
+            let contentHTML;
+
+            if (type === 'month') {
+                const optionsHTML = sortedItems.reverse().map(item => `<option value="${item}" ${selectedMonth === item ? 'selected' : ''}>${item}</option>`).join('');
+                contentHTML = `<select data-type="month" class="month-select w-full p-2 border rounded-md">${optionsHTML}</select>`;
+            } else {
+                const itemsHTML = sortedItems.map(item => `
+                    <label class="flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer">
+                        <input type="checkbox" data-type="${type}" data-value="${item}" class="filter-checkbox h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${selectedItems.includes(item) ? 'checked' : ''}>
+                        <span class="ml-3 text-sm text-gray-700">${item}</span>
+                    </label>
+                `).join('');
+                contentHTML = `
+                    <div class="flex space-x-2 mb-3">
+                        <button data-type="${type}" class="select-all-btn flex-1 bg-blue-500 text-white px-3 py-1.5 rounded-md text-sm hover:bg-blue-600 transition">Select All</button>
+                        <button data-type="${type}" class="unselect-all-btn flex-1 bg-gray-500 text-white px-3 py-1.5 rounded-md text-sm hover:bg-gray-600 transition">Unselect All</button>
+                    </div>
+                    <div class="max-h-40 overflow-y-auto space-y-1 pr-2 filter-list">${itemsHTML}</div>
+                `;
+            }
+
+            return `
+                <div class="mt-4 border-t pt-4">
+                    <h3 class="font-semibold mb-2">${title}</h3>
+                    ${contentHTML}
+                </div>
+            `;
+        };
+
+        const renderFilters = () => {
+            filtersContainer.innerHTML = '';
+            if (allMonths.size > 0) filtersContainer.innerHTML += createFilterSection('Month', allMonths, selectedMonth, 'month');
+            if (allRegions.size > 0) filtersContainer.innerHTML += createFilterSection('Regions', allRegions, selectedRegions, 'region');
+            if (allPlants.size > 0) filtersContainer.innerHTML += createFilterSection('Plants', allPlants, selectedPlants, 'plant');
+            if (allMaterials.size > 0) filtersContainer.innerHTML += createFilterSection('Materials', allMaterials, selectedMaterials, 'material');
+        };
+
+        const renderDashboard = () => {
+            const filteredTickets = allTickets.filter(t => 
+                selectedRegions.includes(t.region) &&
+                selectedPlants.includes(t.plant) &&
+                t.monthYear === selectedMonth &&
+                t.batches.some(b => selectedMaterials.includes(b.normalizedMaterial))
+            );
+            
+            const groupedData = _.groupBy(filteredTickets, 'plant');
+
+            if(filteredTickets.length === 0){
+                summaryCards.innerHTML = '<p class="col-span-full text-center text-gray-500">No data matches the current filter settings.</p>';
+                if (chartInstances.weekly) chartInstances.weekly.destroy();
+                if (chartInstances.region) chartInstances.region.destroy();
+                chartInstances = {};
+                performanceTableBody.innerHTML = '';
+                performanceTableHead.innerHTML = '';
+                return;
+            }
+
+            const summaryStats = _.mapValues(groupedData, tickets => {
+                if (tickets.length === 0) return null;
+                const categoryCounts = _.countBy(tickets, 'overallCategory');
+                return {
+                    totalCYDs: _.sumBy(tickets, 'orderQty'),
+                    totalTickets: tickets.length,
+                    Optimal: categoryCounts['Optimal'] || 0,
+                    'In Tolerance': categoryCounts['In Tolerance'] || 0,
+                    Risk: categoryCounts['Risk'] || 0,
+                    Waste: categoryCounts['Waste'] || 0
+                };
+            });
+
+            summaryCards.innerHTML = '';
+            Object.entries(summaryStats).forEach(([groupName, stats]) => {
+                if (!stats) return;
+                const color = groupColors[groupName];
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-xl shadow-md border-l-4';
+                card.style.borderColor = color;
+                card.innerHTML = `
+                    <h3 class="font-bold text-lg" style="color: ${color}">${groupName}</h3>
+                    <p class="text-sm text-gray-500">Total CYDs: <span class="font-semibold text-gray-700">${stats.totalCYDs.toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-500">Total Tickets: <span class="font-semibold text-gray-700">${stats.totalTickets}</span></p>
+                    <div class="text-xs mt-2 space-y-1">
+                        <p>Optimal: ${stats.Optimal} (${((stats.Optimal / stats.totalTickets) * 100).toFixed(1)}%)</p>
+                        <p>In Tolerance: ${stats['In Tolerance']} (${((stats['In Tolerance'] / stats.totalTickets) * 100).toFixed(1)}%)</p>
+                        <p>Risk: ${stats.Risk} (${((stats.Risk / stats.totalTickets) * 100).toFixed(1)}%)</p>
+                        <p>Waste: ${stats.Waste} (${((stats.Waste / stats.totalTickets) * 100).toFixed(1)}%)</p>
+                    </div>
+                `;
+                summaryCards.appendChild(card);
+            });
+            
+            renderCharts(filteredTickets, summaryStats);
+            renderPerformanceTable(filteredTickets, groupedData);
+        };
+
+        const renderCharts = (filteredTickets, summaryStats) => {
+            // --- Weekly Trend Chart by Material ---
+            const individualBatches = _.flatMap(filteredTickets, 'batches').filter(b => selectedMaterials.includes(b.normalizedMaterial));
+            
+            const weeklyData = {};
+            const materialTrends = new Set();
+            const materialTrendColors = {};
+            let colorIndex = 0;
+
+            weeklyTrendTitle.textContent = 'Weekly Error Trend by Material (Avg %)';
+
+            individualBatches.forEach(batch => materialTrends.add(batch.normalizedMaterial));
+
+            Array.from(materialTrends).sort().forEach(trendKey => {
+                if (!materialTrendColors[trendKey]) {
+                    materialTrendColors[trendKey] = generateColor(colorIndex++);
+                }
+            });
+
+            const groupedByWeek = _.groupBy(individualBatches, b => getWeekStartDate(b.ticketDate));
+
+            Object.entries(groupedByWeek).forEach(([week, weekBatches]) => {
+                if (!weeklyData[week]) weeklyData[week] = { week };
+                const groupedByMaterial = _.groupBy(weekBatches, 'normalizedMaterial');
+                
+                Object.entries(groupedByMaterial).forEach(([material, materialBatches]) => {
+                    weeklyData[week][material] = _.sumBy(materialBatches, 'errorPercent') / materialBatches.length;
+                });
+            });
+
+            const trendLabels = _.sortBy(Object.keys(weeklyData));
+            const trendDatasets = Array.from(materialTrends).sort().map(trendKey => ({
+                label: trendKey,
+                data: trendLabels.map(week => weeklyData[week] ? weeklyData[week][trendKey] : null),
+                borderColor: materialTrendColors[trendKey],
+                backgroundColor: materialTrendColors[trendKey],
+                tension: 0.4,
+                borderWidth: 3,
+                fill: false,
+            }));
+            
+            if (chartInstances.weekly) chartInstances.weekly.destroy();
+            chartInstances.weekly = new Chart('weekly-trend-chart', {
+                type: 'line',
+                data: { labels: trendLabels, datasets: trendDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { ticks: { callback: value => `${value.toFixed(1)}%` } } },
+                    plugins: { 
+                        legend: { position: 'right', labels: { padding: 20, boxWidth: 15 } },
+                        annotation: {
+                            annotations: {
+                                wasteLine: { type: 'line', yMin: 1, yMax: 1, borderColor: 'rgba(239, 68, 68, 0.5)', borderWidth: 2, borderDash: [6, 6], label: { content: 'Waste > 1%', enabled: true, position: 'end', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#b91c1c' } },
+                                optimalUpper: { type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(34, 197, 94, 0.5)', borderWidth: 2, borderDash: [6, 6], label: { content: 'Optimal (0%)', enabled: true, position: 'end', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#15803d' } },
+                                optimalLower: { type: 'line', yMin: -1, yMax: -1, borderColor: 'rgba(34, 197, 94, 0.5)', borderWidth: 2, borderDash: [6, 6], label: { content: 'Optimal (-1%)', enabled: true, position: 'end', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#15803d' } },
+                                riskLine: { type: 'line', yMin: -2, yMax: -2, borderColor: 'rgba(249, 115, 22, 0.5)', borderWidth: 2, borderDash: [6, 6], label: { content: 'Risk < -2%', enabled: true, position: 'end', backgroundColor: 'rgba(249, 115, 22, 0.1)', color: '#9a3412' } }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // --- Material Performance Distribution (Stacked Bar Chart) ---
+            const categoryColors = {
+                Optimal: '#22c55e',
+                'In Tolerance': '#facc15',
+                Risk: '#f97316',
+                Waste: '#ef4444'
+            };
+            const categories = ['Optimal', 'In Tolerance', 'Risk', 'Waste'];
+            
+            const materialStats = {};
+            const groupedByMaterial = _.groupBy(individualBatches, 'normalizedMaterial');
+
+            Object.entries(groupedByMaterial).forEach(([material, batches]) => {
+                const categoryCounts = _.countBy(batches, b => categorizeError(b.errorPercent));
+                materialStats[material] = {
+                    totalBatches: batches.length,
+                    Optimal: categoryCounts['Optimal'] || 0,
+                    'In Tolerance': categoryCounts['In Tolerance'] || 0,
+                    Risk: categoryCounts['Risk'] || 0,
+                    Waste: categoryCounts['Waste'] || 0
+                };
+            });
+
+            const materialLabels = Object.keys(materialStats);
+            const distributionDatasets = categories.map(category => ({
+                label: category,
+                data: materialLabels.map(materialName => {
+                    const stats = materialStats[materialName];
+                    return (stats[category] / stats.totalBatches) * 100;
+                }),
+                backgroundColor: categoryColors[category],
+            }));
+
+            if (chartInstances.region) chartInstances.region.destroy();
+            chartInstances.region = new Chart('region-comparison-chart', {
+                type: 'bar',
+                data: {
+                    labels: materialLabels,
+                    datasets: distributionDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, ticks: { callback: value => `${value.toFixed(0)}%` } }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) label += context.parsed.y.toFixed(2) + '%';
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        };
+        
+        const renderPerformanceTable = (filteredTickets, groupedData) => {
+            performanceTableHead.innerHTML = '';
+            performanceTableBody.innerHTML = '';
+
+            const activeMaterials = new Set();
+            filteredTickets.forEach(t => t.batches.forEach(b => activeMaterials.add(b.normalizedMaterial)));
+
+            if (activeMaterials.size === 0) {
+                performanceTableBody.innerHTML = `<tr><td colspan="${selectedPlants.length + 1}" class="text-center text-gray-500 py-4">No material data for the current selection.</td></tr>`;
+                return;
+            }
+            
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Material</th>`;
+            selectedPlants.sort().forEach(plant => {
+                headerRow.innerHTML += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${plant} (Avg Error %)</th>`;
+            });
+            performanceTableHead.appendChild(headerRow);
+
+            Array.from(activeMaterials).sort().forEach(mat => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                let rowHTML = `<td class="px-6 py-4 whitespace-nowrap"><button data-material="${mat}" class="material-details-btn text-blue-600 hover:text-blue-800 hover:underline font-semibold">${mat}</button></td>`;
+                
+                selectedPlants.sort().forEach(plant => {
+                    const plantBatches = _.flatMap(groupedData[plant], 'batches').filter(b => b.normalizedMaterial === mat) || [];
+                    if (plantBatches.length > 0) {
+                        const avgError = _.sumBy(plantBatches, 'errorPercent') / plantBatches.length;
+                        rowHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm"><span class="font-semibold ${Math.abs(avgError) > 1 ? 'text-red-500' : 'text-green-600'}">${avgError.toFixed(2)}%<span class="text-xs text-gray-500 font-normal ml-2">(${plantBatches.length} batches)</span></span></td>`;
+                    } else {
+                        rowHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm"><span class="text-gray-400">-</span></td>`;
+                    }
+                });
+                row.innerHTML = rowHTML;
+                performanceTableBody.appendChild(row);
+            });
+        };
+
+        const openModal = (material) => {
+            modalTitle.innerHTML = `Batch Details for: <span class="text-blue-600">${material}</span>`;
+            modalTableBody.innerHTML = '';
+            
+            const batches = _.flatMap(allTickets, 'batches').filter(b => 
+                b.normalizedMaterial === material &&
+                selectedRegions.includes(b.region) &&
+                selectedPlants.includes(b.plant) &&
+                b.monthYear === selectedMonth
+            );
+            const sortedBatches = _.sortBy(batches, 'ticketDate').reverse();
+            
+            sortedBatches.forEach(batch => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium" style="color: ${groupColors[batch.plant]}">${batch.plant}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">${new Date(batch.ticketDate).toLocaleString()}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${batch['Ticket number']}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-800">${batch.target.toFixed(2)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-800">${batch.actual.toFixed(2)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold ${batch.errorPercent > 1 || batch.errorPercent < -1 ? 'text-red-500' : 'text-green-600'}">${batch.errorPercent.toFixed(2)}%</td>
+                `;
+                modalTableBody.appendChild(row);
+            });
+            modalBackdrop.classList.remove('hidden');
+            modalContainer.classList.remove('hidden');
+        };
+        
+        const closeModal = () => {
+            modalBackdrop.classList.add('hidden');
+            modalContainer.classList.add('hidden');
+            shareModal.classList.add('hidden');
+        };
+
+        const applyViewMode = () => {
+            if (isDashboardView) {
+                controlsAside.classList.add('hidden');
+                mainContent.classList.remove('lg:col-span-9');
+                mainContent.classList.add('lg:col-span-12');
+                mainGrid.classList.add('dashboard-mode');
+                summaryCards.classList.replace('lg:grid-cols-3', 'lg:grid-cols-4');
+                iconExpand.classList.add('hidden');
+                iconCompress.classList.remove('hidden');
+            } else {
+                controlsAside.classList.remove('hidden');
+                mainContent.classList.remove('lg:col-span-12');
+                mainContent.classList.add('lg:col-span-9');
+                mainGrid.classList.remove('dashboard-mode');
+                summaryCards.classList.replace('lg:grid-cols-4', 'lg:grid-cols-3');
+                iconExpand.classList.remove('hidden');
+                iconCompress.classList.add('hidden');
+            }
+            setTimeout(() => {
+                Object.values(chartInstances).forEach(chart => chart.resize());
+            }, 50);
+        };
+
+        // --- Firebase & Sharing ---
+        const setupFirebase = async () => {
+             const firebaseConfig = {
+               apiKey: "AIzaSyDVMHWZBnQo9AMNtkjY4wNvQ-0yGoAI6Vk",
+               authDomain: "multi-region-batch-analysis.firebaseapp.com",
+               projectId: "multi-region-batch-analysis",
+               storageBucket: "multi-region-batch-analysis.appspot.com",
+               messagingSenderId: "838619730836",
+               appId: "1:838619730836:web:55572c6846ef0be8a37581",
+               measurementId: "G-C4T75FWLSG"
+             };
+             firebase.initializeApp(firebaseConfig);
+             db = firebase.firestore();
+             storage = firebase.storage();
+             const auth = firebase.auth();
+             try {
+                await auth.signInAnonymously();
+             } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                showError(`Sharing Disabled: Firebase Auth Failed. Please ensure "Anonymous" sign-in is enabled in your Firebase project.`);
+             }
+        };
+
+        const loadSharedDashboard = async (id) => {
+            if (!db) {
+                showError("Database not initialized. Cannot load shared dashboard.");
+                return;
+            }
+            setLoaderStatus(`Loading shared dashboard: ${id}`);
+            loader.classList.remove('hidden');
+            
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const docRef = db.collection(`artifacts/${appId}/public/data/dashboards`).doc(id);
+            try {
+                const docSnap = await docRef.get();
+                if (docSnap.exists) {
+                    const data = docSnap.data();
+                    const storageRef = storage.refFromURL(data.storageUrl);
+                    const response = await fetch(await storageRef.getDownloadURL());
+                    const ticketsJSON = await response.text();
+                    
+                    allTickets = JSON.parse(ticketsJSON).map(t => ({ ...t, ticketDate: new Date(t.ticketDate) }));
+                    
+                    const filters = JSON.parse(data.filters);
+                    selectedMonth = filters.selectedMonth;
+                    selectedRegions = filters.selectedRegions;
+                    selectedPlants = filters.selectedPlants;
+                    selectedMaterials = filters.selectedMaterials;
+                    groupColors = JSON.parse(data.groupColors);
+
+                    updateMasterLists();
+                    updateUI();
+                } else {
+                    showError("Shared dashboard not found.");
+                }
+            } catch (e) {
+                console.error("Error loading shared dashboard:", e);
+                showError("Could not load shared dashboard.");
+            } finally {
+                loader.classList.add('hidden');
+                setLoaderStatus('');
+            }
+        };
+
+        shareBtn.addEventListener('click', async () => {
+            if (!db) {
+                showError("Database not initialized. Cannot share.");
+                return;
+            }
+            const dashboardId = crypto.randomUUID();
+            setLoaderStatus(`Saving dashboard snapshot...`);
+            loader.classList.remove('hidden');
+
+            try {
+                const dataString = JSON.stringify(allTickets);
+                const storageRef = storage.ref(`shared_dashboards/${dashboardId}.json`);
+                const snapshot = await storageRef.putString(dataString);
+                const downloadUrl = await snapshot.ref.getDownloadURL();
+
+                const metadata = {
+                    storageUrl: downloadUrl,
+                    filters: JSON.stringify({ selectedMonth, selectedRegions, selectedPlants, selectedMaterials }),
+                    groupColors: JSON.stringify(groupColors),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const docRef = db.collection(`artifacts/${appId}/public/data/dashboards`).doc(dashboardId);
+
+                await docRef.set(metadata);
+                const shareUrl = `${window.location.href.split('?')[0]}?dashboard=${dashboardId}`;
+                shareLinkInput.value = shareUrl;
+                modalBackdrop.classList.remove('hidden');
+                shareModal.classList.remove('hidden');
+            } catch(e) {
+                console.error("Error saving dashboard:", e);
+                showError("Could not save dashboard for sharing.");
+            } finally {
+                loader.classList.add('hidden');
+                setLoaderStatus('');
+            }
+        });
+
+        copyLinkBtn.addEventListener('click', () => {
+            shareLinkInput.select();
+            document.execCommand('copy');
+        });
+
+        // --- EVENT LISTENERS ---
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-blue-500', 'bg-blue-50'); });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-blue-500', 'bg-blue-50'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('border-blue-500', 'bg-blue-50');
+            if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => { if (e.target.files.length) processFiles(e.target.files); });
+        
+        document.getElementById('clear-data-btn').addEventListener('click', () => {
+            window.location.href = window.location.href.split('?')[0];
+        });
+
+        toggleDashboardBtn.addEventListener('click', () => {
+            isDashboardView = !isDashboardView;
+            applyViewMode();
+        });
+
+        filtersContainer.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('select-all-btn') || target.classList.contains('unselect-all-btn')) {
+                const type = target.dataset.type;
+                const selectAll = target.classList.contains('select-all-btn');
+                if (type === 'region') selectedRegions = selectAll ? Array.from(allRegions) : [];
+                if (type === 'plant') selectedPlants = selectAll ? Array.from(allPlants) : [];
+                if (type === 'material') selectedMaterials = selectAll ? Array.from(allMaterials) : [];
+                renderFilters();
+                renderDashboard();
+            }
+        });
+
+        filtersContainer.addEventListener('change', (e) => {
+            const target = e.target;
+            if (target.classList.contains('filter-checkbox')) {
+                const type = target.dataset.type;
+                const value = target.dataset.value;
+                let targetArray;
+                if (type === 'region') targetArray = selectedRegions;
+                if (type === 'plant') targetArray = selectedPlants;
+                if (type === 'material') targetArray = selectedMaterials;
+                
+                if (e.target.checked) {
+                    if (!targetArray.includes(value)) targetArray.push(value);
+                } else {
+                    const index = targetArray.indexOf(value);
+                    if (index > -1) targetArray.splice(index, 1);
+                }
+                renderDashboard();
+            } else if (target.classList.contains('month-select')) {
+                selectedMonth = target.value;
+                renderDashboard();
+            }
+        });
+
+        dashboard.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.matches('.material-details-btn')) {
+                openModal(target.dataset.material);
+            }
+        });
+        
+        modalCloseBtn.addEventListener('click', closeModal);
+        shareModalCloseBtn.addEventListener('click', closeModal);
+        modalBackdrop.addEventListener('click', closeModal);
+        
+        // --- INITIALIZATION ---
+        const init = async () => {
+            if (window.Chart && window.ChartAnnotation) {
+                Chart.register(window.ChartAnnotation);
+            }
+            try {
+                await setupFirebase();
+                const urlParams = new URLSearchParams(window.location.search);
+                const dashboardId = urlParams.get('dashboard');
+                if (dashboardId) {
+                    await loadSharedDashboard(dashboardId);
+                }
+            } catch(e) {
+                console.log("Firebase features disabled.");
+            }
+        };
+
+        init();
+    });
+    </script>
+</body>
+</html>
